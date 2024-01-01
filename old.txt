@@ -1,0 +1,74 @@
+from sklearn.datasets import load_digits
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.neighbors import KNeighborsClassifier
+
+data = load_digits()
+X = data.data
+y = data.target
+
+x_train, x_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
+
+p = 10
+m = 3
+k = 5
+acc_delta = 0
+err = 0.01
+steps = 0
+n = x_train.shape[0]
+pass_fisrt = False
+
+selected_features = np.array([], dtype=int)
+weights = np.ones(n) / n
+accuracy = []
+alpha_coef = [np.ones(n)]
+
+rfc = RandomForestClassifier()
+knn = KNeighborsClassifier()
+
+while(steps < p):
+    
+    features_ranking = []
+    cross_val = []
+
+    rfc.fit(x_train, y_train, weights)
+
+    for feature_idx in np.argsort(rfc.feature_importances_)[::-1]:
+        if feature_idx not in selected_features:
+            features_ranking.append(feature_idx)
+        if len(features_ranking) == m:
+            break
+
+    for i in features_ranking:
+        cross_val.append((cross_val_score(knn, x_train[:, np.append(selected_features, i)], y_train, cv=k).mean(), i))
+
+    top_feature = sorted(cross_val, key=lambda x: x[0])[-1][1]
+
+    if pass_fisrt:
+
+        knn.fit(x_train[:, np.append(selected_features, top_feature)], y_train)
+        accuracy.append(accuracy_score(y_test, knn.predict(x_test[:, np.append(selected_features, top_feature)])))
+        acc_delta = np.abs(accuracy[-1] - accuracy[-2])
+            
+    else:
+
+        knn.fit(x_train[:, top_feature].reshape(-1, 1), y_train)
+        accuracy.append(accuracy_score(y_test, knn.predict(x_test[:, top_feature].reshape(-1, 1))))
+        pass_fisrt = True
+        acc_delta = err + 1
+    
+    if acc_delta > err:
+        selected_features = np.append(selected_features, top_feature)
+
+        rfc.fit(x_train[:, selected_features], y_train)
+
+        alpha_coef.append(rfc.predict_log_proba(x_train[:, selected_features]))
+        alpha_coef[-1][alpha_coef[-1] == -np.inf] = -1
+        alpha_coef[-1] = -alpha_coef[-1].sum(axis=1) / alpha_coef[-2]
+
+        weights *= alpha_coef[-1]
+        weights /= weights.sum()
+    else:
+        weights = np.ones(n) / n
+        break
+    
+    steps += 1
